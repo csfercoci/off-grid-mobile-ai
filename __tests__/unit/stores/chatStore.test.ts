@@ -1091,6 +1091,8 @@ describe('chatStore', () => {
       const options = (useChatStore as any).persist?.getOptions?.();
       if (!options?.migrate) return;
 
+      // Persist middleware migrations can be invoked with partial persisted state,
+      // so this fixture intentionally includes only persisted fields.
       const migrated = options.migrate({
         conversations: [
           {

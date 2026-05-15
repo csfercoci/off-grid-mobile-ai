@@ -301,8 +301,7 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
     deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
     return;
   }
-  const resolvedConversationId = deps.getOrCreateConversationId?.();
-  let targetConversationId = resolvedConversationId ?? deps.activeConversationId;
+  let targetConversationId = deps.getOrCreateConversationId?.() ?? deps.activeConversationId;
   if (!targetConversationId) {
     const fallbackModelId = deps.activeModelInfo?.modelId || deps.activeImageModel?.id;
     if (!fallbackModelId) {

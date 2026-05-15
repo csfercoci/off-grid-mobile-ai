@@ -101,6 +101,10 @@ interface ChatState {
   clearAllConversations: () => void;
   getConversationMessages: (conversationId: string) => Message[];
 }
+type PersistedChatState = {
+  conversations?: Conversation[];
+  activeConversationId?: string | null;
+} & Record<string, unknown>;
 
 export const useChatStore = create<ChatState>()(
   persist(
@@ -352,19 +356,20 @@ export const useChatStore = create<ChatState>()(
       name: 'local-llm-chat-storage',
       version: 2,
       storage: createJSONStorage(() => AsyncStorage),
-      migrate: (persistedState: any) => {
-        if (!persistedState || !Array.isArray(persistedState.conversations)) {
-          return persistedState;
+      migrate: (persistedState: unknown) => {
+        const state = persistedState as PersistedChatState | undefined;
+        if (!state || !Array.isArray(state.conversations)) {
+          return state;
         }
         return {
-          ...persistedState,
-          conversations: persistedState.conversations.map((conv: Conversation) => {
+          ...state,
+          conversations: state.conversations.map((conv: Conversation) => {
             if (!Array.isArray(conv.messages) || conv.messages.length <= 1) {
               return conv;
             }
             const seenIds = new Set<string>();
             const seenClientIds = new Set<string>();
-            const dedupedMessages = conv.messages.filter((msg: Message) => {
+            const dedupedMessages = conv.messages.filter((msg) => {
               if (seenIds.has(msg.id)) return false;
               if (msg.clientMessageId && seenClientIds.has(msg.clientMessageId)) return false;
               seenIds.add(msg.id);
