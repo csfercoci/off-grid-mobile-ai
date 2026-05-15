@@ -292,8 +292,8 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   }
   deps.generatingForConversationRef.current = null;
 }
-let _queueIdSeq = 0; const nextQueueId = () => `${Date.now()}-${(++_queueIdSeq).toString(36)}`;
-let _clientMsgIdSeq = 0; const nextClientMsgId = () => `client-${Date.now()}-${(++_clientMsgIdSeq).toString(36)}`;
+let queueIdSeq = 0; const nextQueueId = () => `${Date.now()}-${(++queueIdSeq).toString(36)}`;
+let clientMsgIdSeq = 0; const nextClientMsgId = () => `client-${Date.now()}-${(++clientMsgIdSeq).toString(36)}`;
 export type SendCall = { text: string; attachments?: MediaAttachment[]; imageMode?: 'auto' | 'force' | 'disabled'; startGeneration: (convId: string, text: string) => Promise<void>; setDebugInfo: SetState<any> };
 export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
   const { text, attachments, imageMode, startGeneration } = call;
@@ -301,7 +301,8 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
     deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
     return;
   }
-  let targetConversationId = deps.getOrCreateConversationId?.() || deps.activeConversationId;
+  const resolvedConversationId = deps.getOrCreateConversationId?.();
+  let targetConversationId = resolvedConversationId ?? deps.activeConversationId;
   if (!targetConversationId) {
     const fallbackModelId = deps.activeModelInfo?.modelId || deps.activeImageModel?.id;
     if (!fallbackModelId) {

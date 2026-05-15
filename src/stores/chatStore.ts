@@ -161,7 +161,7 @@ export const useChatStore = create<ChatState>()(
 
       addMessage: (conversationId, messageData) => {
         const message: Message = {
-          id: messageData.id || messageData.clientMessageId || generateId(),
+          id: messageData.id || generateId(),
           ...messageData,
           timestamp: messageData.timestamp ?? Date.now(),
         };
