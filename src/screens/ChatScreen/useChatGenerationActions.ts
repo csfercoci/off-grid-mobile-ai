@@ -65,6 +65,7 @@ export type GenerationDeps = {
   setShowSettingsPanel?: SetState<boolean>;
   ensureModelLoaded: () => Promise<void>;
   createConversation: (modelId: string, title?: string, projectId?: string) => string;
+  getOrCreateConversationId?: () => string | null;
   pendingProjectId?: string;
 };
 function applyCompactionPrefix(conversation: any, systemPrompt: string, messages: Message[]): { prefix: Message[]; filtered: Message[] } {
@@ -291,7 +292,8 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   }
   deps.generatingForConversationRef.current = null;
 }
-let _msgIdSeq = 0; const nextMsgId = () => `${Date.now()}-${(++_msgIdSeq).toString(36)}`;
+let _queueIdSeq = 0; const nextQueueId = () => `${Date.now()}-${(++_queueIdSeq).toString(36)}`;
+let _clientMsgIdSeq = 0; const nextClientMsgId = () => `client-${Date.now()}-${(++_clientMsgIdSeq).toString(36)}`;
 export type SendCall = { text: string; attachments?: MediaAttachment[]; imageMode?: 'auto' | 'force' | 'disabled'; startGeneration: (convId: string, text: string) => Promise<void>; setDebugInfo: SetState<any> };
 export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
   const { text, attachments, imageMode, startGeneration } = call;
@@ -299,10 +301,14 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
     deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
     return;
   }
-  let targetConversationId = deps.activeConversationId;
+  let targetConversationId = deps.getOrCreateConversationId?.() || deps.activeConversationId;
   if (!targetConversationId) {
     const fallbackModelId = deps.activeModelInfo?.modelId || deps.activeImageModel?.id;
-    targetConversationId = deps.createConversation(fallbackModelId!, undefined, deps.pendingProjectId);
+    if (!fallbackModelId) {
+      deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
+      return;
+    }
+    targetConversationId = deps.createConversation(fallbackModelId, undefined, deps.pendingProjectId);
     deps.setActiveConversation(targetConversationId);
   }
   let messageText = appendAttachmentText(text, attachments);
@@ -312,11 +318,12 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
     return;
   }
   if (shouldGenerateImage && !deps.activeImageModel) messageText = `[User wanted an image but no image model is loaded] ${messageText}`;
+  const clientMessageId = nextClientMsgId();
   if (generationService.getState().isGenerating) {
-    generationService.enqueueMessage({ id: nextMsgId(), conversationId: targetConversationId, text, attachments, messageText });
+    generationService.enqueueMessage({ id: nextQueueId(), conversationId: targetConversationId, clientMessageId, text, attachments, messageText });
     return;
   }
-  deps.addMessage(targetConversationId, { role: 'user', content: text, attachments });
+  deps.addMessage(targetConversationId, { id: clientMessageId, clientMessageId, role: 'user', content: text, attachments });
   await startGeneration(targetConversationId, messageText);
 }
 export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage' | 'generatingForConversationRef'>): Promise<void> {

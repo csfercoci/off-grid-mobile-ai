@@ -443,6 +443,24 @@ describe('handleSendFn', () => {
     expect(startGeneration).toHaveBeenCalledWith('new-conv-id', 'hello');
   });
 
+  it('uses getOrCreateConversationId when provided to avoid duplicate creation races', async () => {
+    const startGeneration = jest.fn(() => Promise.resolve());
+    const deps = makeGenerationDeps({
+      activeConversationId: null,
+      getOrCreateConversationId: jest.fn(() => 'guarded-conv-id'),
+    });
+    await handleSendFn(deps, {
+      text: 'hello',
+      imageMode: 'disabled',
+      startGeneration,
+      setDebugInfo: jest.fn(),
+    });
+    expect(deps.getOrCreateConversationId).toHaveBeenCalled();
+    expect(deps.createConversation).not.toHaveBeenCalled();
+    expect(deps.setActiveConversation).not.toHaveBeenCalled();
+    expect(startGeneration).toHaveBeenCalledWith('guarded-conv-id', 'hello');
+  });
+
   it('shows alert when no activeModel', async () => {
     const deps = makeGenerationDeps({ activeModel: undefined, hasActiveModel: false });
     await handleSendFn(deps, {
@@ -835,7 +853,12 @@ describe('handleSendFn — additional branches', () => {
       startGeneration,
       setDebugInfo: jest.fn(),
     });
-    expect(mockEnqueueMessage).toHaveBeenCalled();
+    expect(mockEnqueueMessage).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-1',
+      text: 'queued message',
+      messageText: 'queued message',
+      clientMessageId: expect.any(String),
+    }));
     expect(startGeneration).not.toHaveBeenCalled();
   });
 

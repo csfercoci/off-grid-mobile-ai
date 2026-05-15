@@ -83,7 +83,7 @@ interface ChatState {
   setActiveConversation: (conversationId: string | null) => void;
   getActiveConversation: () => Conversation | null;
   setConversationProject: (conversationId: string, projectId: string | null) => void;
-  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => Message;
+  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'> & Partial<Pick<Message, 'id' | 'timestamp'>>) => Message;
   updateMessageContent: (conversationId: string, messageId: string, content: string) => void;
   updateMessageThinking: (conversationId: string, messageId: string, isThinking: boolean) => void;
   deleteMessage: (conversationId: string, messageId: string) => void;
@@ -161,25 +161,33 @@ export const useChatStore = create<ChatState>()(
 
       addMessage: (conversationId, messageData) => {
         const message: Message = {
-          id: generateId(),
+          id: messageData.id || messageData.clientMessageId || generateId(),
           ...messageData,
-          timestamp: Date.now(),
+          timestamp: messageData.timestamp ?? Date.now(),
         };
+        let existingMessage: Message | null = null;
 
         set((state) => ({
-          conversations: state.conversations.map((conv) =>
-            conv.id === conversationId
-              ? {
-                  ...conv,
-                  messages: [...conv.messages, message],
-                  updatedAt: nextUpdatedAt(conv.updatedAt),
-                  title: deriveTitle(conv.title, messageData.role, messageData.content),
-                }
-              : conv
-          ),
+          conversations: state.conversations.map((conv) => {
+            if (conv.id !== conversationId) return conv;
+            const duplicate = conv.messages.find((msg) =>
+              msg.id === message.id ||
+              (!!message.clientMessageId && msg.clientMessageId === message.clientMessageId)
+            );
+            if (duplicate) {
+              existingMessage = duplicate;
+              return conv;
+            }
+            return {
+              ...conv,
+              messages: [...conv.messages, message],
+              updatedAt: nextUpdatedAt(conv.updatedAt),
+              title: deriveTitle(conv.title, messageData.role, messageData.content),
+            };
+          }),
         }));
 
-        return message;
+        return existingMessage || message;
       },
 
       updateMessageContent: (conversationId, messageId, content) => {
@@ -342,7 +350,33 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'local-llm-chat-storage',
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
+      migrate: (persistedState: any) => {
+        if (!persistedState || !Array.isArray(persistedState.conversations)) {
+          return persistedState;
+        }
+        return {
+          ...persistedState,
+          conversations: persistedState.conversations.map((conv: Conversation) => {
+            if (!Array.isArray(conv.messages) || conv.messages.length <= 1) {
+              return conv;
+            }
+            const seenIds = new Set<string>();
+            const seenClientIds = new Set<string>();
+            const dedupedMessages = conv.messages.filter((msg: Message) => {
+              if (seenIds.has(msg.id)) return false;
+              if (msg.clientMessageId && seenClientIds.has(msg.clientMessageId)) return false;
+              seenIds.add(msg.id);
+              if (msg.clientMessageId) seenClientIds.add(msg.clientMessageId);
+              return true;
+            });
+            return dedupedMessages.length === conv.messages.length
+              ? conv
+              : { ...conv, messages: dedupedMessages };
+          }),
+        };
+      },
       partialize: (state) => ({
         conversations: state.conversations,
         activeConversationId: state.activeConversationId,

@@ -170,6 +170,8 @@ export interface GenerationMeta {
 // Chat-related types
 export interface Message {
   id: string;
+  /** Stable client-side id used for idempotent replay/deduplication */
+  clientMessageId?: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   /** Reasoning/thinking content parsed by llama.rn (separate from response content) */
