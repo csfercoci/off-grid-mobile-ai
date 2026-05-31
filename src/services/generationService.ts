@@ -23,6 +23,7 @@ type StreamChunk = string | { content?: string; reasoningContent?: string };
 
 export interface QueuedMessage {
   id: string; conversationId: string; text: string;
+  clientMessageId?: string;
   attachments?: MediaAttachment[]; messageText: string;
 }
 
@@ -300,6 +301,7 @@ class GenerationService {
     this.notifyListeners();
     const combined: QueuedMessage = all.length === 1 ? all[0] : {
       id: all[0].id, conversationId: all[0].conversationId,
+      clientMessageId: all[0].clientMessageId,
       text: all.map(m => m.text).join('\n\n'),
       attachments: all.flatMap(m => m.attachments || []),
       messageText: all.map(m => m.messageText).join('\n\n'),

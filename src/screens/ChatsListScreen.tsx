@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
@@ -213,8 +213,9 @@ export const ChatsListScreen: React.FC = () => {
   };
 
   // Sort conversations by updatedAt (most recent first)
-  const sortedConversations = [...conversations].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  const sortedConversations = useMemo(
+    () => [...conversations].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    [conversations],
   );
 
   return (

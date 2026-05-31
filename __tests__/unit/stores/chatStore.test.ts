@@ -233,6 +233,29 @@ describe('chatStore', () => {
       expect(typeof message.timestamp).toBe('number');
     });
 
+    it('deduplicates messages by id', () => {
+      const { createConversation, addMessage } = useChatStore.getState();
+
+      const convId = createConversation('test-model');
+      addMessage(convId, { id: 'client-msg-1', role: 'user', content: 'Hello' });
+      addMessage(convId, { id: 'client-msg-1', role: 'user', content: 'Hello' });
+
+      const conv = getChatState().conversations[0];
+      expect(conv.messages).toHaveLength(1);
+    });
+
+    it('deduplicates messages by clientMessageId', () => {
+      const { createConversation, addMessage } = useChatStore.getState();
+
+      const convId = createConversation('test-model');
+      addMessage(convId, { id: 'msg-1', clientMessageId: 'client-1', role: 'user', content: 'Hello' });
+      const second = addMessage(convId, { id: 'msg-2', clientMessageId: 'client-1', role: 'user', content: 'Hello again' });
+
+      const conv = getChatState().conversations[0];
+      expect(conv.messages).toHaveLength(1);
+      expect(second.id).toBe('msg-1');
+    });
+
     it('updates conversation title from first user message', () => {
       const { createConversation, addMessage } = useChatStore.getState();
 
@@ -1062,6 +1085,35 @@ describe('chatStore', () => {
         expect(persisted).not.toHaveProperty('isThinking');
         expect(persisted).not.toHaveProperty('streamingForConversationId');
       }
+    });
+
+    it('migration deduplicates persisted messages by id/clientMessageId', () => {
+      const options = (useChatStore as any).persist?.getOptions?.();
+      if (!options?.migrate) return;
+
+      // Persist middleware migrations can be invoked with partial persisted state,
+      // so this fixture intentionally includes only persisted fields.
+      const migrated = options.migrate({
+        conversations: [
+          {
+            id: 'conv-1',
+            title: 'Test',
+            modelId: 'm1',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            messages: [
+              { id: 'm1', role: 'user', content: 'one', timestamp: 1 },
+              { id: 'm1', role: 'user', content: 'duplicate by id', timestamp: 2 },
+              { id: 'm2', clientMessageId: 'client-2', role: 'user', content: 'two', timestamp: 3 },
+              { id: 'm3', clientMessageId: 'client-2', role: 'user', content: 'duplicate by client id', timestamp: 4 },
+            ],
+          },
+        ],
+        activeConversationId: 'conv-1',
+      });
+
+      expect(migrated.conversations[0].messages).toHaveLength(2);
+      expect(migrated.conversations[0].messages.map((m: any) => m.id)).toEqual(['m1', 'm2']);
     });
   });
 

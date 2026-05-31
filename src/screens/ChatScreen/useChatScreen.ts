@@ -58,6 +58,7 @@ export const useChatScreen = () => {
   const [pendingProjectId, setPendingProjectId] = useState<string | undefined>(route.params?.projectId);
   const lastMessageCountRef = useRef(0);
   const generatingForConversationRef = useRef<string | null>(null);
+  const pendingConversationIdRef = useRef<string | null>(null);
   const modelLoadStartTimeRef = useRef<number | null>(null);
   const startGenerationRef = useRef<(id: string, text: string) => Promise<void>>(null as any);
   const addMessageRef = useRef<typeof addMessage>(null as any);
@@ -143,6 +144,25 @@ export const useChatScreen = () => {
   const isGeneratingImage = imageGenState.isGenerating;
   const isStreamingForThisConversation = streamingForConversationId === activeConversationId;
 
+  const getOrCreateConversationId = useCallback((): string | null => {
+    const currentActiveConversationId = useChatStore.getState().activeConversationId;
+    if (currentActiveConversationId) {
+      pendingConversationIdRef.current = currentActiveConversationId;
+      return currentActiveConversationId;
+    }
+    if (pendingConversationIdRef.current) {
+      return pendingConversationIdRef.current;
+    }
+    const fallbackModelId = activeModelInfo.modelId || activeImageModel?.id;
+    if (!fallbackModelId) {
+      return null;
+    }
+    const newConversationId = createConversation(fallbackModelId, undefined, pendingProjectId);
+    pendingConversationIdRef.current = newConversationId;
+    setActiveConversation(newConversationId);
+    return newConversationId;
+  }, [activeImageModel?.id, activeModelInfo.modelId, createConversation, pendingProjectId, setActiveConversation]);
+
   const genDeps = {
     activeModelId: activeModelInfo.modelId, activeModel, activeModelInfo, hasActiveModel, hasTextModel, activeConversationId, activeConversation, activeProject,
     activeImageModel, imageModelLoaded, isStreaming, isGeneratingImage, imageGenState, settings,
@@ -151,6 +171,7 @@ export const useChatScreen = () => {
     setActiveConversation, removeImagesByConversationId, generatingForConversationRef, navigation, setShowSettingsPanel,
     ensureModelLoaded: async () => ensureModelLoadedFn(modelDeps),
     createConversation,
+    getOrCreateConversationId,
     pendingProjectId,
   };
 
@@ -175,7 +196,14 @@ export const useChatScreen = () => {
   }, []);
 
   const handleQueuedSend = useCallback(async (item: QueuedMessage) => {
-    addMessageRef.current(item.conversationId, { role: 'user', content: item.text, attachments: item.attachments });
+    const clientMessageId = item.clientMessageId || item.id;
+    addMessageRef.current(item.conversationId, {
+      id: clientMessageId,
+      clientMessageId,
+      role: 'user',
+      content: item.text,
+      attachments: item.attachments,
+    });
     await startGenerationRef.current(item.conversationId, item.messageText);
   }, []);
 
@@ -206,10 +234,17 @@ export const useChatScreen = () => {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [activeConversationId]);
 
+  useEffect(() => {
+    pendingConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
   useChatImageModelEffects({ setDownloadedImageModels, settings, activeImageModelId, downloadedModels });
   useChatModelStateSync({ activeModelInfo, activeModelId, activeModel, modelDeps, activeRemoteModel, activeRemoteTextModelId, isModelLoading, setSupportsVision, setSupportsToolCalling, setSupportsThinking });
 
-  const displayMessages = getDisplayMessages(activeConversation?.messages || [], { isThinking, streamingMessage, streamingReasoningContent, isStreamingForThisConversation });
+  const displayMessages = useMemo(
+    () => getDisplayMessages(activeConversation?.messages || [], { isThinking, streamingMessage, streamingReasoningContent, isStreamingForThisConversation }),
+    [activeConversation?.messages, isThinking, isStreamingForThisConversation, streamingMessage, streamingReasoningContent],
+  );
 
   useEffect(() => {
     const prev = lastMessageCountRef.current, curr = displayMessages.length;
